@@ -69,6 +69,23 @@ dotnet build TempMon.slnx -c Release
 2. **The MCP server** is launched by your MCP client (see below). It needs no admin and finds the
    port automatically via the discovery file.
 
+## System tray & auto-start
+
+TempMon lives in the notification area:
+
+- **Close or minimize** the window and it hides to the tray (it does **not** exit) — the poll loop
+  and the HTTP server keep running.
+- **Double-click the tray icon**, or **Open dashboard** in the flyout, to bring the window back.
+  Re-launching the exe resurfaces the running instance instead of starting a second one.
+- **Auto-start at logon** (flyout toggle) registers a **Task Scheduler** ONLOGON task with *Run
+  Level Highest*, so the elevated app starts at logon with **no UAC prompt** (a plain `Run` key
+  would prompt or be blocked every logon). Toggling it off removes the task; a moved/reinstalled
+  exe self-repairs its task path on the next elevated launch.
+- **Exit** (flyout only) fully shuts down: disposes the poller and HTTP server, deletes
+  `endpoint.json`, and removes the tray icon.
+
+A single named mutex enforces the one-reader rule — only one `TempMon.Desktop` runs at a time.
+
 ## Publish (single file)
 
 LibreHardwareMonitor self-extracts its native `WinRing0x64.sys`, so single-file publish must keep
@@ -125,4 +142,5 @@ or the desktop app is not elevated.
 No telemetry, no outbound network. The HTTP server binds `127.0.0.1` only. The discovery file under
 `%PROGRAMDATA%` holds just the local base URL.
 
-LibreHardwareMonitorLib is licensed **MPL-2.0** — see [`NOTICE`](./NOTICE).
+TempMon is licensed **MIT** — see [`LICENSE`](./LICENSE). LibreHardwareMonitorLib is licensed
+**MPL-2.0** — see [`NOTICE`](./NOTICE).
