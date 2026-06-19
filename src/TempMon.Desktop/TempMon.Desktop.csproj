@@ -23,4 +23,10 @@
     <ProjectReference Include="..\TempMon.Core\TempMon.Core.csproj" />
   </ItemGroup>
 
+  <!-- Pure-WPF tray control: renders a custom dark TrayPopup, so no UseWindowsForms.
+       v2.0.1 targets net8.0-windows (2.0.0 added the net8.0 target). -->
+  <ItemGroup>
+    <PackageReference Include="Hardcodet.NotifyIcon.Wpf" Version="2.0.1" />
+  </ItemGroup>
+
 </Project>

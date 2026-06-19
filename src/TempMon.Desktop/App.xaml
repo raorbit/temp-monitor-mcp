@@ -1,5 +1,10 @@
 <Application x:Class="TempMon.Desktop.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+  <!-- OnExplicitShutdown: hiding the window to tray must NOT exit the process (that would kill the
+       poll loop and leave a ghost icon). Tray Exit (App.ExitApp) is the only teardown trigger.
+       Startup stays code-driven in App.xaml.cs — no StartupUri. The tray flyout resources are loaded
+       directly by TrayIconFactory, so no app-level merge is needed. -->
   <Application.Resources />
 </Application>

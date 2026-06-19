@@ -17,6 +17,8 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
     {
         Elevated = elevated;
         PollSeconds = pollSeconds;
+        // AutoStartEnabled is filled in by App after startup (querying it shells schtasks, so it's
+        // done off the UI thread rather than in this constructor).
     }
 
     public bool Elevated { get; }
@@ -39,6 +41,36 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
 
     private string _updatedAgo = "just now";
 
+    // Stable tray scalars, derived from the CPU summary on every poll. The flyout binds these
+    // directly instead of SummaryTiles[0], which is .Clear()'d and rebuilt each tick (flickers/throws).
+    private string _cpuTrayText = "—";
+    public string CpuTrayText
+    {
+        get => _cpuTrayText;
+        private set { _cpuTrayText = value; Raise(nameof(CpuTrayText)); }
+    }
+
+    private Brush _cpuTrayBrush = Palette.None;
+    public Brush CpuTrayBrush
+    {
+        get => _cpuTrayBrush;
+        private set { _cpuTrayBrush = value; Raise(nameof(CpuTrayBrush)); }
+    }
+
+    private string _trayTooltip = "TempMon";
+    public string TrayTooltip
+    {
+        get => _trayTooltip;
+        private set { _trayTooltip = value; Raise(nameof(TrayTooltip)); }
+    }
+
+    private bool _autoStartEnabled;
+    public bool AutoStartEnabled
+    {
+        get => _autoStartEnabled;
+        set { _autoStartEnabled = value; Raise(nameof(AutoStartEnabled)); }
+    }
+
     public void Update(Snapshot snap)
     {
         SummaryTiles.Clear();
@@ -53,6 +85,12 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
             if (group.Count > 0)
                 Components.Add(BuildCard(component, group));
         }
+
+        // Single source of truth: Summary.CpuC + Thresholds + Palette, plus a tooltip string.
+        double? cpu = snap.Summary.CpuC;
+        CpuTrayText = Fmt(cpu);
+        CpuTrayBrush = Palette.ForLevel(Thresholds.Level(Component.Cpu, cpu));
+        TrayTooltip = cpu is null ? "TempMon — CPU —" : $"TempMon — CPU {Fmt(cpu)}°C";
 
         _updatedAgo = "just now";
         Raise(nameof(PollText));
