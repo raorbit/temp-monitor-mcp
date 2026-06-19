@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(WinTfm)</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>TempMon.Desktop</RootNamespace>
+    <AssemblyName>TempMon.Desktop</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- Single-file publish must self-extract LHM's native WinRing0x64.sys (resolved decision #3). -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <!-- Sole sensor reader (Core) + in-process Kestrel HTTP server. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TempMon.Core\TempMon.Core.csproj" />
+  </ItemGroup>
+
+</Project>
