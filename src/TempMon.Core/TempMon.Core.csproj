@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(WinTfm)</TargetFramework>
+    <RootNamespace>TempMon.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MPL-2.0 — attribution kept in README/NOTICE. Sole hardware reader lives here. -->
+    <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
+  </ItemGroup>
+
+</Project>
