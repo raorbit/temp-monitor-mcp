@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tempmon": {
+      "command": "C:\\path\\to\\TempMon.Mcp.exe",
+      "args": []
+    }
+  }
+}

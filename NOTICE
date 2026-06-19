@@ -1,0 +1,10 @@
+TempMon
+
+This product uses LibreHardwareMonitorLib
+  https://github.com/LibreHardware/LibreHardwareMonitor
+  Copyright (c) LibreHardwareMonitor contributors
+  Licensed under the Mozilla Public License 2.0 (MPL-2.0)
+  https://www.mozilla.org/en-US/MPL/2.0/
+
+The MPL-2.0 source for LibreHardwareMonitorLib is available at the URL above.
+TempMon does not modify the library; it is consumed as an unmodified NuGet package.
