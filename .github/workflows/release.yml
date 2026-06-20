@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write   # required to create the GitHub release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # Refuse to publish a tag that disagrees with the in-tree version, so a release exe can never
+      # claim a version it wasn't built as.
+      - name: Verify the tag matches Directory.Build.props version
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = ($props.Project.PropertyGroup.Version | Select-Object -First 1).Trim()
+          $tag = "${{ github.ref_name }}" -replace '^v', ''
+          Write-Host "version=$version tag=$tag"
+          if ($version -ne $tag) {
+            Write-Error "Tag '${{ github.ref_name }}' does not match <Version>$version</Version>."
+            exit 1
+          }
+
+      - name: Publish desktop (single-file, win-x64)
+        run: dotnet publish src/TempMon.Desktop -c Release -p:PublishSingleFile=true
+
+      - name: Publish mcp (single-file, win-x64)
+        run: dotnet publish src/TempMon.Mcp -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src/TempMon.Desktop/bin/Release/net8.0-windows/win-x64/publish/TempMon.Desktop.exe
+            src/TempMon.Mcp/bin/Release/net8.0/win-x64/publish/TempMon.Mcp.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true
