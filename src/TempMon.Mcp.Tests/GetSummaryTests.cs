@@ -37,6 +37,7 @@ public sealed class GetSummaryTests
         var result = await tools.GetSummary(CancellationToken.None);
 
         using var doc = JsonDocument.Parse(result);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
         var error = doc.RootElement.GetProperty("error").GetString();
         Assert.NotNull(error);
         Assert.Contains("summary", error);

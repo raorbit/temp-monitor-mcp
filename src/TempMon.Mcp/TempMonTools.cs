@@ -248,6 +248,9 @@ public sealed class TempMonTools
                   "is NOT a safe 'all clear'. Run TempMon.Desktop elevated and check the elevation banner.",
     });
 
+    /// <summary>A transport/reach failure (could not get a snapshot at all). Carries <c>ok: false</c>
+    /// so a consumer can tell it apart from a real payload (none of which carry an <c>ok</c> key) and
+    /// from the <see cref="Unavailable"/> verdict (the desktop is reachable but has no readable data).</summary>
     private static string Problem(string message) =>
-        JsonSerializer.Serialize(new { error = message });
+        JsonSerializer.Serialize(new { ok = false, error = message });
 }

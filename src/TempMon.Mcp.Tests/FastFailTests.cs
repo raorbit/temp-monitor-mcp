@@ -26,6 +26,7 @@ public sealed class FastFailTests
         Assert.Equal(0, handler.RequestCount);
 
         using var doc = JsonDocument.Parse(result);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
         var error = doc.RootElement.GetProperty("error").GetString();
         Assert.NotNull(error);
         Assert.Contains(DeadPid.ToString(), error);
@@ -73,6 +74,7 @@ public sealed class FastFailTests
         var result = await tools.GetTemperatures(CancellationToken.None);
 
         using var doc = JsonDocument.Parse(result);
+        Assert.False(doc.RootElement.GetProperty("ok").GetBoolean());
         var error = doc.RootElement.GetProperty("error").GetString();
         Assert.NotNull(error);
         Assert.Contains("could not reach TempMon", error);
