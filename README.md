@@ -1,5 +1,7 @@
 # TempMon
 
+[![CI](https://github.com/raorbit/temp-monitor-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/raorbit/temp-monitor-mcp/actions/workflows/ci.yml)
+
 A Windows hardware-temperature monitor with a desktop dashboard and an [MCP](https://modelcontextprotocol.io)
 server, so Claude Code (or any MCP client) can read your CPU / GPU / motherboard / storage
 temperatures.
@@ -62,7 +64,7 @@ dotnet build TempMon.slnx -c Release
    Quick check, from any shell:
 
    ```sh
-   curl http://127.0.0.1:8757/health     # {"ok":true,"elevated":true}
+   curl http://127.0.0.1:8757/health     # {"ok":true,"elevated":true,"snapshot_at":"2026-06-18T14:32:05Z"}
    curl http://127.0.0.1:8757/temps      # full snapshot
    ```
 
@@ -118,9 +120,17 @@ or add it to `.mcp.json` (see [`.mcp.json.example`](./.mcp.json.example)):
 | `get_summary()` | `cpu_c` / `gpu_c` / `max_drive_c` |
 | `check_thresholds(cpuMax?, gpuMax?, driveMax?)` | sensors at/above the given limits (defaults: CPU 80, GPU 75, drive 60 °C) |
 
+**Staleness:** the desktop app polls every few seconds. If its poll loop has stalled (or it died
+after writing the discovery file), `get_temperatures()` wraps the payload as
+`{ "stale": true, "age_seconds": N, "hint": "...", "data": { …snapshot… } }` once the snapshot is
+older than 30 s — a fresh snapshot is returned verbatim. If the desktop process named in
+`endpoint.json` is gone, the tools fail fast with a friendly message instead of waiting out the HTTP
+timeout.
+
 ## HTTP API
 
-`GET /temps` — the snapshot below. `GET /health` — `{"ok":true,"elevated":true}`.
+`GET /temps` — the snapshot below. `GET /health` — `{"ok":true,"elevated":true,"snapshot_at":"<ISO-8601>"}`
+(`snapshot_at` is the cached snapshot's own timestamp — a frozen value means the poll loop has stalled).
 
 ```json
 {
