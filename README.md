@@ -1,5 +1,7 @@
 # TempMon
 
+[![CI](https://github.com/raorbit/temp-monitor-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/raorbit/temp-monitor-mcp/actions/workflows/ci.yml)
+
 A Windows hardware-temperature monitor with a desktop dashboard and an [MCP](https://modelcontextprotocol.io)
 server, so Claude Code (or any MCP client) can read your CPU / GPU / motherboard / storage
 temperatures.
@@ -62,7 +64,7 @@ dotnet build TempMon.slnx -c Release
    Quick check, from any shell:
 
    ```sh
-   curl http://127.0.0.1:8757/health     # {"ok":true,"elevated":true}
+   curl http://127.0.0.1:8757/health     # {"ok":true,"schema_version":1,"sensors_available":true,"elevated":true,"snapshot_at":"2026-06-18T14:32:05Z"}
    curl http://127.0.0.1:8757/temps      # full snapshot
    ```
 
@@ -93,8 +95,11 @@ native libraries on disk (`IncludeNativeLibrariesForSelfExtract`, already set in
 
 ```sh
 dotnet publish src/TempMon.Desktop -c Release -p:PublishSingleFile=true
-dotnet publish src/TempMon.Mcp     -c Release -p:PublishSingleFile=true
+dotnet publish src/TempMon.Mcp     -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true
 ```
+
+(The desktop pins `win-x64` in its csproj; the MCP server doesn't, so its single-file publish needs an
+explicit `-r win-x64`.)
 
 Smoke-test the published desktop exe on a clean machine to confirm the driver extracts.
 
@@ -114,16 +119,35 @@ or add it to `.mcp.json` (see [`.mcp.json.example`](./.mcp.json.example)):
 
 | Tool | Returns |
 |---|---|
-| `get_temperatures()` | the full snapshot payload (JSON) |
+| `get_temperatures()` | the snapshot wrapped in a `{ schema_version, stale, age_seconds, data }` envelope (read the snapshot from `data`) |
 | `get_summary()` | `cpu_c` / `gpu_c` / `max_drive_c` |
 | `check_thresholds(cpuMax?, gpuMax?, driveMax?)` | sensors at/above the given limits (defaults: CPU 80, GPU 75, drive 60 °C) |
 
+When the desktop is reachable but its sensors could not be read (the driver failed to load, or the app
+is not elevated), `get_summary()` and `check_thresholds()` return
+`{ "available": false, "reason": "sensors_not_readable", "message": "…" }` instead of a zeroed answer —
+treat that as **unknown**, not as "all clear". A transport failure (the desktop isn't running) returns
+`{ "ok": false, "error": "…" }`.
+
+**Staleness:** the desktop app polls every few seconds. `get_temperatures()` **always** wraps the
+snapshot as `{ "schema_version": N, "stale": <bool>, "age_seconds": N, "data": { …snapshot… } }` —
+read the snapshot from `data`. `stale` flips to `true` (with a `hint`) once the snapshot is older than
+30 s, meaning the poll loop has stalled or the desktop died after writing the discovery file; a missing
+or unparseable timestamp yields `stale: false, age_seconds: null`. If the desktop process named in
+`endpoint.json` is gone, the tools fail fast with a friendly message instead of waiting out the HTTP
+timeout.
+
 ## HTTP API
 
-`GET /temps` — the snapshot below. `GET /health` — `{"ok":true,"elevated":true}`.
+`GET /temps` — the snapshot below. `GET /health` —
+`{"ok":true,"schema_version":1,"sensors_available":true,"elevated":true,"snapshot_at":"<ISO-8601>"}`
+(`snapshot_at` is the cached snapshot's own timestamp — a frozen value means the poll loop has stalled;
+`sensors_available` is `false` when the hardware reader never opened, so the values are unreadable, not safe).
 
 ```json
 {
+  "schema_version": 1,
+  "sensors_available": true,
   "timestamp": "2026-06-18T14:32:05Z",
   "host": "DESKTOP-XYZ",
   "summary": { "cpu_c": 62.5, "gpu_c": 51.0, "max_drive_c": 44.0 },
@@ -134,8 +158,10 @@ or add it to `.mcp.json` (see [`.mcp.json.example`](./.mcp.json.example)):
 }
 ```
 
-`component` is one of `CPU | GPU | Motherboard | Storage`. Any value is `null` if the read failed
-or the desktop app is not elevated.
+`schema_version` is the wire-contract version (bumped only on a breaking shape change).
+`sensors_available` is `false` when the hardware reader never opened (driver blocked, or the app is
+not elevated) — the values are then unreadable, not a safe reading. `component` is one of
+`CPU | GPU | Motherboard | Storage`. Any value is `null` if the read failed or the desktop app is not elevated.
 
 ## Privacy & licensing
 

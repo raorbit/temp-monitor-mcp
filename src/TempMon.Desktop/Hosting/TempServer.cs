@@ -46,8 +46,18 @@ internal sealed class TempServer : IAsyncDisposable
         app.MapGet("/temps", () =>
             Results.Content(_poller.Latest.ToJson(), "application/json"));
 
+        // The cached snapshot's own timestamp is the staleness anchor (the MCP layer computes
+        // age_seconds from it). Echo it on /health so a probe can see how old the cache is without
+        // pulling the full /temps payload — a wedged poll loop shows up as a frozen snapshot_at.
         app.MapGet("/health", () =>
-            Results.Json(new { ok = true, elevated = _elevated }));
+            Results.Json(new
+            {
+                ok = true,
+                schema_version = Snapshot.CurrentSchemaVersion,
+                sensors_available = _poller.Latest.SensorsAvailable,
+                elevated = _elevated,
+                snapshot_at = _poller.Latest.Timestamp,
+            }));
 
         await app.StartAsync();
 

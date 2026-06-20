@@ -1,5 +1,10 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using LibreHardwareMonitor.Hardware;
+
+// The Core test project reaches the internal sensor-selection helpers (RepresentativeCpu /
+// RepresentativeGpu / MaxDrive) to lock the summary rules without standing up a real Computer.
+[assembly: InternalsVisibleTo("TempMon.Core.Tests")]
 
 namespace TempMon.Core;
 
@@ -73,9 +78,9 @@ public sealed class SensorPoller : IDisposable
         var summary = new Summary(
             CpuC: RepresentativeCpu(sensors),
             GpuC: RepresentativeGpu(sensors),
-            MaxDriveC: sensors.Where(s => s.Component == Component.Storage).Max(s => s.Value));
+            MaxDriveC: MaxDrive(sensors));
 
-        return new Snapshot(Now(), Environment.MachineName, summary, sensors);
+        return new Snapshot(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, summary, sensors);
     }
 
     /// <summary>Recursively gathers temperature sensors, carrying the top-level component/device
@@ -109,7 +114,9 @@ public sealed class SensorPoller : IDisposable
         _ => null,
     };
 
-    private static double? RepresentativeCpu(IReadOnlyList<SensorReading> s)
+    // internal (not private) so the Core test project can lock the sensor-selection rules without
+    // standing up a real Computer — see the InternalsVisibleTo("TempMon.Core.Tests") at file top.
+    internal static double? RepresentativeCpu(IReadOnlyList<SensorReading> s)
     {
         static bool Cpu(SensorReading x) => x.Component == Component.Cpu && x.Value is not null;
         return s.FirstOrDefault(x => Cpu(x) && Has(x, "Tctl"))?.Value
@@ -118,13 +125,20 @@ public sealed class SensorPoller : IDisposable
             ?? s.FirstOrDefault(Cpu)?.Value;
     }
 
-    private static double? RepresentativeGpu(IReadOnlyList<SensorReading> s)
+    internal static double? RepresentativeGpu(IReadOnlyList<SensorReading> s)
     {
         static bool Gpu(SensorReading x) => x.Component == Component.Gpu && x.Value is not null;
         return s.FirstOrDefault(x => Gpu(x) && Has(x, "Core") && !Has(x, "Hot"))?.Value
             ?? s.FirstOrDefault(x => Gpu(x) && Has(x, "Core"))?.Value
             ?? s.FirstOrDefault(Gpu)?.Value;
     }
+
+    /// <summary>The hottest storage reading, or <c>null</c> when no drive reported a value. The
+    /// nullable <see cref="Enumerable.Max(IEnumerable{double?})"/> overload skips null entries and
+    /// returns <c>null</c> for an empty sequence — so this never throws on a box with no storage
+    /// sensors.</summary>
+    internal static double? MaxDrive(IReadOnlyList<SensorReading> s) =>
+        s.Where(x => x.Component == Component.Storage).Max(x => x.Value);
 
     private static bool Has(SensorReading s, string token) =>
         s.Name.Contains(token, StringComparison.OrdinalIgnoreCase);
@@ -134,8 +148,11 @@ public sealed class SensorPoller : IDisposable
     private static string Now() =>
         DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
-    private static Snapshot Empty() =>
-        new(Now(), Environment.MachineName, new Summary(null, null, null), Array.Empty<SensorReading>());
+    // Instance (not static) so it can stamp SensorsAvailable from _opened: the ctor calls Empty()
+    // before _computer.Open() while _opened is still false, and Poll() early-returns on !_opened, so
+    // only a healthy Build() ever publishes a snapshot with SensorsAvailable == true.
+    private Snapshot Empty() =>
+        new(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, new Summary(null, null, null), Array.Empty<SensorReading>());
 
     public void Dispose()
     {

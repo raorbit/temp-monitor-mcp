@@ -32,6 +32,17 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
     public Brush ElevationDot => Elevated ? Palette.Green : Palette.Amber;
     public string PollText => $"Polling every {PollSeconds}s · updated {_updatedAgo}";
 
+    // Mirrors the MCP layer's staleness threshold (TempMonTools.StaleAfterSeconds) — kept as a local
+    // const rather than a cross-project reference, so the desktop flags a wedged poll loop at the same
+    // 30s the MCP tools surface it.
+    private const int StaleAfterSeconds = 30;
+
+    private DateTimeOffset? _lastSnapshotUtc;
+    private bool _pollStale;
+
+    /// <summary>The freshness label's colour: dim in steady state, amber once the snapshot is stale.</summary>
+    public Brush PollBrush => _pollStale ? Palette.Amber : Palette.Dim;
+
     private string _endpoint = "starting…";
     public string Endpoint
     {
@@ -64,6 +75,22 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         private set { _trayTooltip = value; Raise(nameof(TrayTooltip)); }
     }
 
+    private double? _lastCpu;
+    private bool _serverFailed;
+
+    /// <summary>Set when the HTTP server failed to start. It persists across polls (the server does not
+    /// retry), so the tray tooltip keeps surfacing the broken state instead of reverting to a CPU reading.</summary>
+    public bool ServerFailed
+    {
+        get => _serverFailed;
+        set { _serverFailed = value; UpdateTrayTooltip(); }
+    }
+
+    private void UpdateTrayTooltip() =>
+        TrayTooltip = _serverFailed
+            ? "TempMon — HTTP server failed"
+            : _lastCpu is null ? "TempMon — CPU —" : $"TempMon — CPU {Fmt(_lastCpu)}°C";
+
     private bool _autoStartEnabled;
     public bool AutoStartEnabled
     {
@@ -90,10 +117,44 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         double? cpu = snap.Summary.CpuC;
         CpuTrayText = Fmt(cpu);
         CpuTrayBrush = Palette.ForLevel(Thresholds.Level(Component.Cpu, cpu));
-        TrayTooltip = cpu is null ? "TempMon — CPU —" : $"TempMon — CPU {Fmt(cpu)}°C";
+        _lastCpu = cpu;
+        UpdateTrayTooltip();
 
-        _updatedAgo = "just now";
+        _lastSnapshotUtc = DateTimeOffset.TryParse(snap.Timestamp, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var when)
+            ? when
+            : null;
+        RefreshFreshness();
+    }
+
+    /// <summary>Recomputes the "updated Ns ago" label and the stale/amber state from the last
+    /// snapshot's timestamp. Driven both by each poll and by a 1s timer in App, so a wedged poll loop
+    /// shows as a growing age that flips amber past <see cref="StaleAfterSeconds"/> rather than a
+    /// frozen "just now".</summary>
+    public void RefreshFreshness()
+    {
+        if (_lastSnapshotUtc is { } when)
+        {
+            double age = (DateTimeOffset.UtcNow - when).TotalSeconds;
+            _updatedAgo = age < 5 ? "just now"
+                        : age < 60 ? $"{(int)age}s ago"
+                        : $"{(int)(age / 60)}m ago";
+            SetPollStale(age > StaleAfterSeconds);
+        }
+        else
+        {
+            _updatedAgo = "—";
+            SetPollStale(false);
+        }
+
         Raise(nameof(PollText));
+    }
+
+    private void SetPollStale(bool stale)
+    {
+        if (_pollStale == stale) return;   // only churn the brush when the state actually flips
+        _pollStale = stale;
+        Raise(nameof(PollBrush));
     }
 
     private static SummaryTileVM Tile(string label, double? value, string component) =>
@@ -171,6 +232,7 @@ internal static class Palette
     public static readonly Brush Amber = Frozen("#EAB54E");
     public static readonly Brush Red = Frozen("#F0616D");
     public static readonly Brush None = Frozen("#6E6E73");
+    public static readonly Brush Dim = Frozen("#80FFFFFF");   // the status bar's steady-state text colour
 
     public static Brush ForLevel(TempLevel level) => level switch
     {
