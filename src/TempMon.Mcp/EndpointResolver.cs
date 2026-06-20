@@ -52,8 +52,6 @@ public sealed class EndpointResolver
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
         "TempMon", "endpoint.json");
 
-    public Uri Resolve() => ResolveEndpoint().BaseUrl;
-
     /// <summary>Resolves the endpoint with its source and writer pid (when the file supplied one),
     /// so callers can fast-fail on a dead writer before reaching for the network.</summary>
     internal ResolvedEndpoint ResolveEndpoint()

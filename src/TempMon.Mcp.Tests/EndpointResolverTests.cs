@@ -21,7 +21,7 @@ public sealed class EndpointResolverTests
         Assert.Same(baked, resolved);
         Assert.Equal(EndpointSource.FromFile, resolved.Source);
         Assert.Equal(4242, resolved.Pid);
-        Assert.Equal(new Uri("http://127.0.0.1:9999"), resolver.Resolve());
+        Assert.Equal(new Uri("http://127.0.0.1:9999"), resolved.BaseUrl);
     }
 
     [Fact]
