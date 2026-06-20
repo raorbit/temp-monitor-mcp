@@ -34,21 +34,28 @@ public sealed record Snapshot(
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 }
 
-/// <summary>The headline numbers shown in the dashboard strip and returned by <c>get_summary</c>.</summary>
+/// <summary>The headline numbers shown in the dashboard strip and returned by <c>get_summary</c>.
+/// <see cref="CpuReadable"/> is <c>false</c> when the CPU is privilege-gated and unreadable (the
+/// process is not elevated); <see cref="CpuC"/> is then <c>null</c>, never a misleading <c>0</c>.</summary>
 public sealed record Summary(
     [property: JsonPropertyName("cpu_c")] double? CpuC,
     [property: JsonPropertyName("gpu_c")] double? GpuC,
-    [property: JsonPropertyName("max_drive_c")] double? MaxDriveC);
+    [property: JsonPropertyName("max_drive_c")] double? MaxDriveC,
+    [property: JsonPropertyName("cpu_readable")] bool CpuReadable = true);
 
 /// <summary>One temperature sensor. <see cref="Value"/>/<see cref="Min"/>/<see cref="Max"/> are
-/// <c>null</c> when the read failed or the process is not elevated.</summary>
+/// <c>null</c> when the read failed or the process is not elevated. <see cref="Readable"/> is
+/// <c>false</c> when this sensor's subsystem is privilege-gated (CPU/Motherboard) and the process is
+/// not elevated — the reading is then untrustworthy (it can be a real-looking <c>0</c>), not safe.
+/// A missing <c>readable</c> key on the wire means <c>true</c> (back-compat).</summary>
 public sealed record SensorReading(
     [property: JsonPropertyName("component")] string Component,
     [property: JsonPropertyName("device")] string Device,
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("value")] double? Value,
     [property: JsonPropertyName("min")] double? Min,
-    [property: JsonPropertyName("max")] double? Max);
+    [property: JsonPropertyName("max")] double? Max,
+    [property: JsonPropertyName("readable")] bool Readable = true);
 
 /// <summary>The four component buckets the contract allows: <c>CPU | GPU | Motherboard | Storage</c>.</summary>
 public static class Component
