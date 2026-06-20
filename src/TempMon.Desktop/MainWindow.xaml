@@ -1,6 +1,7 @@
 <Window x:Class="TempMon.Desktop.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:TempMon.Desktop.ViewModels"
         Title="TempMon" Height="840" Width="1000" MinWidth="720" MinHeight="560"
         Background="#0E0F13" Foreground="#F3F3F3"
         FontFamily="Segoe UI Variable Display, Segoe UI"
@@ -29,8 +30,8 @@
       </Border>
     </DataTemplate>
 
-    <!-- A single sensor sub-card -->
-    <DataTemplate x:Key="SensorCard">
+    <!-- A single sensor sub-card (CPU / GPU / Motherboard) -->
+    <DataTemplate DataType="{x:Type vm:SensorVM}">
       <Border Background="#26262B" BorderBrush="#0DFFFFFF" BorderThickness="1"
               CornerRadius="10" Padding="14,13" Margin="0,0,11,11">
         <StackPanel>
@@ -56,6 +57,44 @@
             <TextBlock Text="{Binding Min}" FontSize="11" Foreground="#5CFFFFFF" Margin="0,0,12,0" />
             <TextBlock Text="{Binding Max}" FontSize="11" Foreground="#5CFFFFFF" />
           </StackPanel>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+
+    <!-- A storage drive sub-card: headline = hottest sensor, every reading listed below (multi-sensor) -->
+    <DataTemplate DataType="{x:Type vm:DriveCardVM}">
+      <Border Background="#26262B" BorderBrush="#0DFFFFFF" BorderThickness="1"
+              CornerRadius="10" Padding="14,13" Margin="0,0,11,11">
+        <StackPanel>
+          <TextBlock Text="{Binding Device}" FontSize="12" Foreground="#8CFFFFFF"
+                     TextWrapping="Wrap" MinHeight="30" />
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Bottom">
+            <TextBlock Text="{Binding Headline}" FontSize="27" FontWeight="SemiBold"
+                       Foreground="{Binding HeadlineColor}" />
+            <TextBlock Text="°C" FontSize="13" Foreground="#61FFFFFF"
+                       Margin="2,0,0,4" VerticalAlignment="Bottom" />
+          </StackPanel>
+          <ItemsControl ItemsSource="{Binding Readings}" Margin="0,12,0,0">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid Margin="0,3,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="11.5"
+                             Foreground="#8CFFFFFF" TextTrimming="CharacterEllipsis"
+                             VerticalAlignment="Center" Margin="0,0,8,0" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Value}" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{Binding Color}" />
+                    <TextBlock Text="°C" FontSize="10" Foreground="#61FFFFFF"
+                               Margin="2,0,0,1" VerticalAlignment="Bottom" />
+                  </StackPanel>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
     </DataTemplate>
@@ -88,8 +127,7 @@
                        Foreground="#61FFFFFF" VerticalAlignment="Center" />
           </Grid>
           <!-- sensors -->
-          <ItemsControl ItemsSource="{Binding Sensors}" Margin="0,15,-11,-11"
-                        ItemTemplate="{StaticResource SensorCard}">
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,15,-11,-11">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <UniformGrid Columns="2" />
