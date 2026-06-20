@@ -3,8 +3,11 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using System.Runtime.CompilerServices;
 using TempMon.Core;
 using Component = TempMon.Core.Component;   // disambiguate from System.ComponentModel.Component
+
+[assembly: InternalsVisibleTo("TempMon.Desktop.Tests")]
 
 namespace TempMon.Desktop.ViewModels;
 
@@ -160,7 +163,7 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
     private static SummaryTileVM Tile(string label, double? value, string component) =>
         new(label, Fmt(value), Palette.ForLevel(Thresholds.Level(component, value)));
 
-    private static ComponentCardVM BuildCard(string component, List<SensorReading> group)
+    internal static ComponentCardVM BuildCard(string component, List<SensorReading> group)
     {
         string tag = component switch
         {
