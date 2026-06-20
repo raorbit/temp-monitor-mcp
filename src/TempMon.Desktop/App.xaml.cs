@@ -123,8 +123,9 @@ public partial class App : Application
         var token = _cts.Token;
 
         // Poll off the UI thread; marshal the immutable snapshot back for rendering. Runs while the
-        // window is hidden to tray — the VM update refreshes the tray header/tooltip too. InvokeAsync
-        // (not the blocking Invoke) keeps the poll thread unblocked so TearDown can cancel-then-join it.
+        // window is hidden to tray — the VM update refreshes the tray header/tooltip too. The marshal
+        // carries the loop's token, so TearDown's Cancel() aborts a still-queued Update op and the loop
+        // ends at once — instead of stalling on a dispatcher that's blocked trying to join this task.
         _pollTask = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
@@ -132,11 +133,13 @@ public partial class App : Application
                 try
                 {
                     var snapshot = _poller!.Poll();
-                    await Dispatcher.InvokeAsync(() => _vm!.Update(snapshot)).Task;
+                    await Dispatcher.InvokeAsync(
+                        () => _vm!.Update(snapshot), DispatcherPriority.Normal, token).Task;
                     await Task.Delay(TimeSpan.FromSeconds(PollSeconds), token);
                 }
-                catch (TaskCanceledException)
+                catch (OperationCanceledException)
                 {
+                    // Cancellation (token, or an aborted queued Update op) ends the loop cleanly.
                     break;
                 }
                 catch
@@ -251,9 +254,9 @@ public partial class App : Application
         _freshnessTimer?.Stop();
         _showEvent?.Set();   // release the listener thread's WaitOne so it can exit
 
-        // Cancel the poll loop and briefly join it BEFORE blocking on the server: its last iteration may
-        // have an InvokeAsync queued on this (UI) thread, so we must not block the dispatcher while one is
-        // in flight. Both waits are bounded so a wedged shutdown can never hang the exit.
+        // Cancel the poll loop, then briefly join it BEFORE blocking on the server. Cancel() aborts any
+        // Update op the last iteration queued on this (UI) thread, so the loop ends without the dispatcher
+        // having to pump — and the bounded waits mean a wedged shutdown can still never hang the exit.
         _cts?.Cancel();
         try { _pollTask?.Wait(TimeSpan.FromSeconds(2)); } catch { /* cancellation / aggregate — fine */ }
 
