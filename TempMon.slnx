@@ -1,7 +1,13 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/TempMon.Core.Tests/TempMon.Core.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="src/TempMon.Core/TempMon.Core.csproj" />
     <Project Path="src/TempMon.Desktop/TempMon.Desktop.csproj" />
+    <Project Path="src/TempMon.Mcp.Tests/TempMon.Mcp.Tests.csproj">
+      <Platform Project="x64" />
+    </Project>
     <Project Path="src/TempMon.Mcp/TempMon.Mcp.csproj" />
   </Folder>
 </Solution>

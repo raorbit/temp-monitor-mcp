@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>$(NetTfm)</TargetFramework>
+    <RootNamespace>TempMon.Mcp.Tests</RootNamespace>
+    <AssemblyName>TempMon.Mcp.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!-- Net8.0, no admin, no hardware: these tests stub the HTTP transport and never poll a sensor. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Referencing the MCP host (an Exe) from a test project is supported. The one-rule stands:
+         this project does NOT reference TempMon.Core, so the snapshot shape stays raw-parsed here
+         exactly as the tools parse it on the wire. -->
+    <ProjectReference Include="..\TempMon.Mcp\TempMon.Mcp.csproj" />
+  </ItemGroup>
+
+</Project>
