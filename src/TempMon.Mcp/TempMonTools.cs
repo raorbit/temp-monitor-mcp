@@ -34,10 +34,13 @@ public sealed class TempMonTools
     }
 
     [McpServerTool(Name = "get_temperatures")]
-    [Description("Get the full temperature snapshot — every CPU, GPU, motherboard and storage " +
-                 "sensor with current/min/max values — as JSON. Values are null if the desktop " +
-                 "app is not running elevated. If the cached snapshot is stale (the desktop's poll " +
-                 "loop has stalled) the payload is wrapped with a 'stale' flag and 'age_seconds'.")]
+    [Description("Get the full temperature snapshot — every CPU, GPU, motherboard and storage sensor " +
+                 "with current/min/max values. The snapshot is always wrapped as { schema_version, " +
+                 "stale, age_seconds, data }: read the snapshot itself from 'data'. 'stale' is true " +
+                 "(with a 'hint') when the reading is older than 30s. Inside 'data', 'sensors_available' " +
+                 "is false when the hardware reader never opened (driver blocked, or not elevated) — the " +
+                 "values are then unreadable, not a safe 'all clear'. A transport failure returns " +
+                 "{ ok: false, error }.")]
     public async Task<string> GetTemperatures(CancellationToken cancellationToken)
     {
         var (ok, json, error) = await TryFetchAsync(cancellationToken);
@@ -49,7 +52,9 @@ public sealed class TempMonTools
     }
 
     [McpServerTool(Name = "get_summary")]
-    [Description("Get just the headline numbers: cpu_c, gpu_c and max_drive_c (°C).")]
+    [Description("Get just the headline numbers: cpu_c, gpu_c and max_drive_c (°C). If the desktop's " +
+                 "sensors could not be read, returns { available: false, reason: 'sensors_not_readable' } " +
+                 "instead — treat that as 'unknown', NOT as safe. A transport failure: { ok: false, error }.")]
     public async Task<string> GetSummary(CancellationToken cancellationToken)
     {
         var (ok, json, error) = await TryFetchAsync(cancellationToken);
@@ -65,8 +70,10 @@ public sealed class TempMonTools
 
     [McpServerTool(Name = "check_thresholds")]
     [Description("List sensors that are currently at or above a temperature limit (°C). Any limit " +
-                 "left unset uses a default: CPU 80, GPU 75, drive 60. Motherboard sensors are " +
-                 "not checked.")]
+                 "left unset uses a default: CPU 80, GPU 75, drive 60. Motherboard sensors are not " +
+                 "checked. If the desktop's sensors could not be read, returns { available: false, " +
+                 "reason: 'sensors_not_readable' } instead of a zero count — treat that as 'unknown', " +
+                 "not as 'nothing over limit'. A transport failure: { ok: false, error }.")]
     public async Task<string> CheckThresholds(
         [Description("CPU limit in °C (default 80).")] double? cpuMax = null,
         [Description("GPU limit in °C (default 75).")] double? gpuMax = null,

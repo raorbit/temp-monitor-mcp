@@ -120,6 +120,12 @@ or add it to `.mcp.json` (see [`.mcp.json.example`](./.mcp.json.example)):
 | `get_summary()` | `cpu_c` / `gpu_c` / `max_drive_c` |
 | `check_thresholds(cpuMax?, gpuMax?, driveMax?)` | sensors at/above the given limits (defaults: CPU 80, GPU 75, drive 60 °C) |
 
+When the desktop is reachable but its sensors could not be read (the driver failed to load, or the app
+is not elevated), `get_summary()` and `check_thresholds()` return
+`{ "available": false, "reason": "sensors_not_readable", "message": "…" }` instead of a zeroed answer —
+treat that as **unknown**, not as "all clear". A transport failure (the desktop isn't running) returns
+`{ "ok": false, "error": "…" }`.
+
 **Staleness:** the desktop app polls every few seconds. `get_temperatures()` **always** wraps the
 snapshot as `{ "schema_version": N, "stale": <bool>, "age_seconds": N, "data": { …snapshot… } }` —
 read the snapshot from `data`. `stale` flips to `true` (with a `hint`) once the snapshot is older than
