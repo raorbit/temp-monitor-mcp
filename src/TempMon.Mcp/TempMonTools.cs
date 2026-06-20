@@ -52,9 +52,11 @@ public sealed class TempMonTools
     }
 
     [McpServerTool(Name = "get_summary")]
-    [Description("Get just the headline numbers: cpu_c, gpu_c and max_drive_c (°C). If the desktop's " +
-                 "sensors could not be read, returns { available: false, reason: 'sensors_not_readable' } " +
-                 "instead — treat that as 'unknown', NOT as safe. A transport failure: { ok: false, error }.")]
+    [Description("Get just the headline numbers: cpu_c, gpu_c and max_drive_c (°C). If the CPU is " +
+                 "privilege-gated and the desktop is not elevated, cpu_c is null and the result carries " +
+                 "'partial': true / 'cpu_readable': false — the CPU temperature is UNKNOWN, not safe " +
+                 "(GPU and drive stay valid). If no sensors could be read at all, returns { available: " +
+                 "false, reason: 'sensors_not_readable' }. A transport failure: { ok: false, error }.")]
     public async Task<string> GetSummary(CancellationToken cancellationToken)
     {
         var (ok, json, error) = await TryFetchAsync(cancellationToken);
@@ -63,17 +65,34 @@ public sealed class TempMonTools
         using var doc = JsonDocument.Parse(json!);
         if (SensorsUnavailable(doc.RootElement)) return Unavailable();
 
-        return doc.RootElement.TryGetProperty("summary", out var summary)
-            ? summary.GetRawText()
-            : Problem("snapshot had no 'summary' field");
+        if (!doc.RootElement.TryGetProperty("summary", out var summary))
+            return Problem("snapshot had no 'summary' field");
+
+        // The CPU is privilege-gated: un-elevated, cpu_c is null on the wire. Surface that as an explicit
+        // partial verdict so a consumer can't read a missing CPU number as "fine".
+        if (!CpuReadable(summary))
+        {
+            return JsonSerializer.Serialize(new
+            {
+                partial = true,
+                cpu_readable = false,
+                summary,
+                note = "cpu_c is unavailable — the CPU sensor is privilege-gated and TempMon.Desktop " +
+                       "is not elevated. This is 'unknown', NOT a safe reading. GPU and drive are valid.",
+            });
+        }
+
+        return summary.GetRawText();
     }
 
     [McpServerTool(Name = "check_thresholds")]
     [Description("List sensors that are currently at or above a temperature limit (°C). Any limit " +
                  "left unset uses a default: CPU 80, GPU 75, drive 60. Motherboard sensors are not " +
-                 "checked. If the desktop's sensors could not be read, returns { available: false, " +
-                 "reason: 'sensors_not_readable' } instead of a zero count — treat that as 'unknown', " +
-                 "not as 'nothing over limit'. A transport failure: { ok: false, error }.")]
+                 "checked. If a checked sensor could not be read (e.g. the CPU when the desktop is not " +
+                 "elevated) the result carries 'partial': true and 'unreadable': [...] — those " +
+                 "components are UNKNOWN, not safe, so a count of 0 is not a clean 'all clear'. If no " +
+                 "sensors could be read at all, returns { available: false, reason: " +
+                 "'sensors_not_readable' }. A transport failure: { ok: false, error }.")]
     public async Task<string> CheckThresholds(
         [Description("CPU limit in °C (default 80).")] double? cpuMax = null,
         [Description("GPU limit in °C (default 75).")] double? gpuMax = null,
@@ -88,6 +107,7 @@ public sealed class TempMonTools
         double driveLimit = driveMax ?? DefaultDriveMax;
 
         var over = new List<object>();
+        var unreadable = new HashSet<string>(StringComparer.Ordinal);
         using var doc = JsonDocument.Parse(json!);
         if (SensorsUnavailable(doc.RootElement)) return Unavailable();
 
@@ -106,6 +126,14 @@ public sealed class TempMonTools
                 };
                 if (limit is null) continue;
 
+                // A checked component the desktop couldn't read (un-elevated CPU/Motherboard) reads as a
+                // real-looking 0 — record it as unreadable instead of letting that 0 clear the limit.
+                if (!IsReadable(s))
+                {
+                    unreadable.Add(component!);
+                    continue;
+                }
+
                 if (s.TryGetProperty("value", out var v) &&
                     v.ValueKind == JsonValueKind.Number &&
                     v.GetDouble() is var value && value >= limit)
@@ -122,13 +150,31 @@ public sealed class TempMonTools
             }
         }
 
-        var result = new
+        var limits = new { cpu_c = cpuLimit, gpu_c = gpuLimit, drive_c = driveLimit };
+
+        // When a checked component was unreadable, never return a bare count — attach partial/unreadable
+        // so a count of 0 can't be misread as a clean "all clear" for a component we couldn't measure.
+        if (unreadable.Count > 0)
         {
-            limits = new { cpu_c = cpuLimit, gpu_c = gpuLimit, drive_c = driveLimit },
+            return JsonSerializer.Serialize(new
+            {
+                limits,
+                over_limit = over,
+                count = over.Count,
+                partial = true,
+                unreadable = unreadable.OrderBy(c => c, StringComparer.Ordinal).ToArray(),
+                note = "Some checked sensors could not be read (privilege-gated, and TempMon.Desktop " +
+                       "is not elevated), so this is NOT a complete 'all clear' — their temperatures " +
+                       "are unknown. Run TempMon.Desktop elevated to check them.",
+            });
+        }
+
+        return JsonSerializer.Serialize(new
+        {
+            limits,
             over_limit = over,
             count = over.Count,
-        };
-        return JsonSerializer.Serialize(result);
+        });
     }
 
     private async Task<(bool ok, string? json, string? error)> TryFetchAsync(CancellationToken ct)
@@ -242,6 +288,17 @@ public sealed class TempMonTools
     /// hand-built test fixtures, omit it, and we must never turn their data into a false unavailable.</summary>
     private static bool SensorsUnavailable(JsonElement root) =>
         root.TryGetProperty("sensors_available", out var a) && a.ValueKind == JsonValueKind.False;
+
+    /// <summary>A sensor reading is trustworthy unless it explicitly says <c>readable: false</c>. A
+    /// MISSING <c>readable</c> key means readable — older desktops and the hand-built fixtures omit it,
+    /// the same permissive convention as <see cref="SensorsUnavailable"/>.</summary>
+    private static bool IsReadable(JsonElement sensor) =>
+        !(sensor.TryGetProperty("readable", out var r) && r.ValueKind == JsonValueKind.False);
+
+    /// <summary>The CPU headline is readable unless the summary explicitly reports
+    /// <c>cpu_readable: false</c> (missing ⇒ readable, for back-compat).</summary>
+    private static bool CpuReadable(JsonElement summary) =>
+        !(summary.TryGetProperty("cpu_readable", out var r) && r.ValueKind == JsonValueKind.False);
 
     /// <summary>The explicit "sensors could not be read" verdict for the summarising tools, kept
     /// deliberately distinct from <see cref="Problem"/> (a transport failure): the desktop is reachable,
