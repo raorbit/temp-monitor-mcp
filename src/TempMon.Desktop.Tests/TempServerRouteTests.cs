@@ -19,7 +19,7 @@ public sealed class TempServerRouteTests
     [Fact]
     public async Task Temps_route_is_byte_identical_to_the_cached_snapshot()
     {
-        using var poller = new SensorPoller();
+        using var poller = new SensorPoller(elevated: false);
         await using var server = new TempServer(poller, elevated: false);
         var baseUrl = await server.StartAsync();
 
@@ -43,7 +43,7 @@ public sealed class TempServerRouteTests
     [Fact]
     public async Task Health_route_reports_ok_and_the_contract_fields()
     {
-        using var poller = new SensorPoller();
+        using var poller = new SensorPoller(elevated: false);
         await using var server = new TempServer(poller, elevated: false);
         var baseUrl = await server.StartAsync();
 

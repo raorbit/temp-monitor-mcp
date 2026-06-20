@@ -59,7 +59,7 @@ public partial class App : Application
             bool autoStarted = e.Args.Any(a =>
                 string.Equals(a, "--autostart", StringComparison.OrdinalIgnoreCase));
 
-            _poller = new SensorPoller();
+            _poller = new SensorPoller(elevated);
             _vm = new DashboardViewModel(elevated, PollSeconds);
             _vm.Update(_poller.Poll());   // prime the UI with one read
 
