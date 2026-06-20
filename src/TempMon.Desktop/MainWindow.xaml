@@ -185,7 +185,7 @@
         </StackPanel>
 
         <TextBlock Grid.Column="2" Text="{Binding PollText}" HorizontalAlignment="Right"
-                   FontSize="11.5" Foreground="#80FFFFFF" VerticalAlignment="Center" />
+                   FontSize="11.5" Foreground="{Binding PollBrush}" VerticalAlignment="Center" />
       </Grid>
     </Border>
   </Grid>
