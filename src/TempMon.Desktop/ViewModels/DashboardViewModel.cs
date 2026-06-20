@@ -179,9 +179,13 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
             // Each drive is its own LHM device; label sensors by drive, summarise the card by count.
             int drives = group.Select(s => s.Device).Distinct().Count();
             device = drives == 1 ? "1 drive" : $"{drives} drives";
+            // Collapse the label to just the drive only when that drive reports a single, generically
+            // named sensor. A drive that exposes several (an NVMe composite + Temperature 1/2) keeps the
+            // sensor name, so its readings don't render as indistinguishable duplicate drives.
+            var perDevice = group.GroupBy(s => s.Device).ToDictionary(g => g.Key, g => g.Count());
             sensors = group
                 .Select(s => MakeSensor(component,
-                    IsGeneric(s.Name) ? s.Device : $"{s.Device} · {s.Name}", s))
+                    perDevice[s.Device] == 1 && IsGeneric(s.Name) ? s.Device : $"{s.Device} · {s.Name}", s))
                 .ToList();
         }
         else
