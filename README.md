@@ -64,7 +64,7 @@ dotnet build TempMon.slnx -c Release
    Quick check, from any shell:
 
    ```sh
-   curl http://127.0.0.1:8757/health     # {"ok":true,"elevated":true,"snapshot_at":"2026-06-18T14:32:05Z"}
+   curl http://127.0.0.1:8757/health     # {"ok":true,"schema_version":1,"sensors_available":true,"elevated":true,"snapshot_at":"2026-06-18T14:32:05Z"}
    curl http://127.0.0.1:8757/temps      # full snapshot
    ```
 
@@ -129,11 +129,15 @@ timeout.
 
 ## HTTP API
 
-`GET /temps` — the snapshot below. `GET /health` — `{"ok":true,"elevated":true,"snapshot_at":"<ISO-8601>"}`
-(`snapshot_at` is the cached snapshot's own timestamp — a frozen value means the poll loop has stalled).
+`GET /temps` — the snapshot below. `GET /health` —
+`{"ok":true,"schema_version":1,"sensors_available":true,"elevated":true,"snapshot_at":"<ISO-8601>"}`
+(`snapshot_at` is the cached snapshot's own timestamp — a frozen value means the poll loop has stalled;
+`sensors_available` is `false` when the hardware reader never opened, so the values are unreadable, not safe).
 
 ```json
 {
+  "schema_version": 1,
+  "sensors_available": true,
   "timestamp": "2026-06-18T14:32:05Z",
   "host": "DESKTOP-XYZ",
   "summary": { "cpu_c": 62.5, "gpu_c": 51.0, "max_drive_c": 44.0 },
@@ -144,8 +148,10 @@ timeout.
 }
 ```
 
-`component` is one of `CPU | GPU | Motherboard | Storage`. Any value is `null` if the read failed
-or the desktop app is not elevated.
+`schema_version` is the wire-contract version (bumped only on a breaking shape change).
+`sensors_available` is `false` when the hardware reader never opened (driver blocked, or the app is
+not elevated) — the values are then unreadable, not a safe reading. `component` is one of
+`CPU | GPU | Motherboard | Storage`. Any value is `null` if the read failed or the desktop app is not elevated.
 
 ## Privacy & licensing
 
