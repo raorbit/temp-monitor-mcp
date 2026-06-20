@@ -71,6 +71,24 @@ dotnet build TempMon.slnx -c Release
 2. **The MCP server** is launched by your MCP client (see below). It needs no admin and finds the
    port automatically via the discovery file.
 
+## Antivirus & WinRing0
+
+To read CPU and motherboard temperatures, LibreHardwareMonitor loads the **WinRing0** kernel driver.
+Microsoft put WinRing0 on its vulnerable-driver blocklist — it has a known CVE (CVE-2020-14979) that lets
+a local process reach kernel memory — so **Windows Defender flags it as `VulnerableDriver:WinNT/Winring0`
+and removes it.** This is expected, is **not** specific to TempMon, and affects every WinRing0-based tool
+(LibreHardwareMonitor, HWiNFO, FanControl, …). It is not a false positive (the driver really is
+vulnerable) but the driver and TempMon are not malware.
+
+If the driver is removed, TempMon **degrades honestly** rather than lying: GPU (NVML) and storage (SMART)
+temperatures still read, while CPU and motherboard report as unavailable — the MCP tools return an
+explicit `available: false` / `partial` verdict instead of a false "all clear".
+
+To keep CPU/motherboard readings, **allow the detection**: Windows Security → *Virus & threat protection*
+→ *Protection history* → the WinRing0 item → *Actions* → *Allow*. That re-permits a known-vulnerable
+driver, so only do it on a machine you control; on a shared or internet-exposed box, leave it blocked and
+accept that CPU/motherboard temperatures will be unavailable.
+
 ## System tray & auto-start
 
 TempMon lives in the notification area:
