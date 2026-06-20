@@ -30,7 +30,9 @@ internal sealed record ResolvedEndpoint(Uri BaseUrl, EndpointSource Source, int?
 /// <summary>
 /// Finds the desktop app's HTTP base URL by reading the discovery file it writes to
 /// %PROGRAMDATA%\TempMon\endpoint.json. Falls back to the default port if the file is missing —
-/// this is how the un-elevated MCP server survives the 8757-taken fallback automatically.
+/// this is how the un-elevated MCP server survives the 8757-taken fallback automatically. The file
+/// lives under a world-writable directory, so the resolver trusts its <c>baseUrl</c> only when it is
+/// an http/https loopback address (see <see cref="TryParseEndpoint"/>).
 /// </summary>
 public sealed class EndpointResolver
 {
@@ -60,21 +62,8 @@ public sealed class EndpointResolver
 
         try
         {
-            if (File.Exists(FilePath))
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(FilePath));
-                if (doc.RootElement.TryGetProperty("baseUrl", out var baseUrl) &&
-                    baseUrl.GetString() is { } url &&
-                    Uri.TryCreate(url, UriKind.Absolute, out var parsed))
-                {
-                    int? pid = doc.RootElement.TryGetProperty("pid", out var pidEl) &&
-                               pidEl.ValueKind == JsonValueKind.Number &&
-                               pidEl.TryGetInt32(out var p)
-                        ? p
-                        : null;
-                    return new ResolvedEndpoint(parsed, EndpointSource.FromFile, pid);
-                }
-            }
+            if (File.Exists(FilePath) && TryParseEndpoint(File.ReadAllText(FilePath), out var endpoint))
+                return endpoint;
         }
         catch
         {
@@ -82,5 +71,37 @@ public sealed class EndpointResolver
         }
 
         return new ResolvedEndpoint(Default, EndpointSource.Default, Pid: null);
+    }
+
+    /// <summary>
+    /// Parses the discovery file's JSON, accepting its <c>baseUrl</c> ONLY when it is an http/https
+    /// loopback address. <c>endpoint.json</c> lives under world-writable <c>%PROGRAMDATA%</c>, so a
+    /// standard-user process could plant a <c>baseUrl</c> pointing off-box (to feed the agent false
+    /// temperatures) or at another local service (a loopback SSRF). We refuse any non-loopback or
+    /// non-http(s) URL and let the caller fall back to the well-known loopback default. Returns
+    /// <c>false</c> (no endpoint) when the JSON has no usable, loopback <c>baseUrl</c>; the caller's
+    /// try/catch handles a genuinely malformed file.
+    /// </summary>
+    internal static bool TryParseEndpoint(string json, out ResolvedEndpoint endpoint)
+    {
+        endpoint = null!;
+
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.TryGetProperty("baseUrl", out var baseUrl) &&
+            baseUrl.GetString() is { } url &&
+            Uri.TryCreate(url, UriKind.Absolute, out var parsed) &&
+            (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps) &&
+            parsed.IsLoopback)
+        {
+            int? pid = doc.RootElement.TryGetProperty("pid", out var pidEl) &&
+                       pidEl.ValueKind == JsonValueKind.Number &&
+                       pidEl.TryGetInt32(out var p)
+                ? p
+                : null;
+            endpoint = new ResolvedEndpoint(parsed, EndpointSource.FromFile, pid);
+            return true;
+        }
+
+        return false;
     }
 }
