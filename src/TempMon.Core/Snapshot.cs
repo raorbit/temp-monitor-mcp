@@ -7,13 +7,24 @@ namespace TempMon.Core;
 /// The full temperature snapshot. This is the JSON contract served verbatim at <c>GET /temps</c>
 /// and returned by the MCP <c>get_temperatures</c> tool. Property names are pinned with
 /// <see cref="JsonPropertyNameAttribute"/> so the wire shape never drifts with naming policy.
+///
+/// <para><see cref="SchemaVersion"/> is the contract version a consumer can branch on — the desktop
+/// and the MCP server ship as separate exes and update independently, so this is their only wire
+/// handshake. <see cref="SensorsAvailable"/> is <c>false</c> when the hardware reader never opened
+/// (driver blocked, or the app is not elevated): the values are then unreadable, <b>not</b> a safe
+/// "all clear" — the MCP summarising tools turn this into an explicit unavailable verdict.</para>
 /// </summary>
 public sealed record Snapshot(
+    [property: JsonPropertyName("schema_version")] int SchemaVersion,
+    [property: JsonPropertyName("sensors_available")] bool SensorsAvailable,
     [property: JsonPropertyName("timestamp")] string Timestamp,
     [property: JsonPropertyName("host")] string Host,
     [property: JsonPropertyName("summary")] Summary Summary,
     [property: JsonPropertyName("sensors")] IReadOnlyList<SensorReading> Sensors)
 {
+    /// <summary>The current wire-contract version. Bump only on a breaking shape change.</summary>
+    public const int CurrentSchemaVersion = 1;
+
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,

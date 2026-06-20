@@ -13,6 +13,8 @@ namespace TempMon.Core.Tests;
 public class SnapshotContractTests
 {
     private static Snapshot Sample() => new(
+        SchemaVersion: Snapshot.CurrentSchemaVersion,
+        SensorsAvailable: true,
         Timestamp: "2026-06-18T14:32:05Z",
         Host: "DESKTOP-XYZ",
         Summary: new Summary(CpuC: 62.5, GpuC: 51.0, MaxDriveC: 44.0),
@@ -27,11 +29,32 @@ public class SnapshotContractTests
         using var doc = JsonDocument.Parse(Sample().ToJson());
         var root = doc.RootElement;
 
+        Assert.Equal(Snapshot.CurrentSchemaVersion, root.GetProperty("schema_version").GetInt32());
+        Assert.True(root.GetProperty("sensors_available").GetBoolean());
         Assert.Equal("2026-06-18T14:32:05Z", root.GetProperty("timestamp").GetString());
         Assert.Equal("DESKTOP-XYZ", root.GetProperty("host").GetString());
         Assert.True(root.TryGetProperty("summary", out _));
         Assert.True(root.TryGetProperty("sensors", out var sensors));
         Assert.Equal(JsonValueKind.Array, sensors.ValueKind);
+    }
+
+    [Fact]
+    public void Schema_version_is_one_and_pinned()
+    {
+        // The /health endpoint echoes this value; this is its only automated coverage.
+        Assert.Equal(1, Snapshot.CurrentSchemaVersion);
+    }
+
+    [Fact]
+    public void Sensors_available_flag_round_trips_false()
+    {
+        var snapshot = new Snapshot(
+            Snapshot.CurrentSchemaVersion, SensorsAvailable: false,
+            "2026-06-18T14:32:05Z", "HOST",
+            new Summary(null, null, null), Array.Empty<SensorReading>());
+
+        using var doc = JsonDocument.Parse(snapshot.ToJson());
+        Assert.False(doc.RootElement.GetProperty("sensors_available").GetBoolean());
     }
 
     [Fact]
@@ -65,6 +88,7 @@ public class SnapshotContractTests
         // DefaultIgnoreCondition = Never: the contract says "any value null if the read failed",
         // so the keys must still be present with a null value (the MCP layer checks ValueKind).
         var snapshot = new Snapshot(
+            Snapshot.CurrentSchemaVersion, SensorsAvailable: true,
             "2026-06-18T14:32:05Z", "HOST",
             new Summary(null, null, null),
             new[] { new SensorReading(Component.Gpu, "GPU", "Core", null, null, null) });
@@ -89,7 +113,7 @@ public class SnapshotContractTests
         var json = Sample().ToJson();
 
         Assert.DoesNotContain('\n', json);
-        Assert.StartsWith("{\"timestamp\":", json);
+        Assert.StartsWith("{\"schema_version\":", json);
     }
 
     [Fact]

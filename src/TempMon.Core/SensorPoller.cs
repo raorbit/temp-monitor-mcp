@@ -80,7 +80,7 @@ public sealed class SensorPoller : IDisposable
             GpuC: RepresentativeGpu(sensors),
             MaxDriveC: MaxDrive(sensors));
 
-        return new Snapshot(Now(), Environment.MachineName, summary, sensors);
+        return new Snapshot(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, summary, sensors);
     }
 
     /// <summary>Recursively gathers temperature sensors, carrying the top-level component/device
@@ -148,8 +148,11 @@ public sealed class SensorPoller : IDisposable
     private static string Now() =>
         DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
-    private static Snapshot Empty() =>
-        new(Now(), Environment.MachineName, new Summary(null, null, null), Array.Empty<SensorReading>());
+    // Instance (not static) so it can stamp SensorsAvailable from _opened: the ctor calls Empty()
+    // before _computer.Open() while _opened is still false, and Poll() early-returns on !_opened, so
+    // only a healthy Build() ever publishes a snapshot with SensorsAvailable == true.
+    private Snapshot Empty() =>
+        new(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, new Summary(null, null, null), Array.Empty<SensorReading>());
 
     public void Dispose()
     {
