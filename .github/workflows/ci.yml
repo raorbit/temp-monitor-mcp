@@ -25,3 +25,21 @@ jobs:
 
       - name: Test
         run: dotnet test TempMon.slnx -c Release --no-build
+
+      # Exercise the fragile single-file publish (native WinRing0 self-extract, win-x64 RID, WPF +
+      # AspNetCore framework refs). A non-zero exit catches publish-time regressions; it can't validate
+      # runtime driver extraction on a headless runner, so the clean-box smoke-test in the README stays.
+      - name: Publish desktop (single-file, win-x64)
+        run: dotnet publish src/TempMon.Desktop -c Release -p:PublishSingleFile=true
+
+      - name: Publish mcp (single-file, win-x64)
+        run: dotnet publish src/TempMon.Mcp -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true
+
+      - name: Upload published exes
+        uses: actions/upload-artifact@v4
+        with:
+          name: tempmon-win-x64
+          path: |
+            src/TempMon.Desktop/bin/Release/net8.0-windows/win-x64/publish/TempMon.Desktop.exe
+            src/TempMon.Mcp/bin/Release/net8.0/win-x64/publish/TempMon.Mcp.exe
+          if-no-files-found: error

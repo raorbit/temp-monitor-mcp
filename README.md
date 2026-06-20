@@ -95,8 +95,11 @@ native libraries on disk (`IncludeNativeLibrariesForSelfExtract`, already set in
 
 ```sh
 dotnet publish src/TempMon.Desktop -c Release -p:PublishSingleFile=true
-dotnet publish src/TempMon.Mcp     -c Release -p:PublishSingleFile=true
+dotnet publish src/TempMon.Mcp     -c Release -r win-x64 --no-self-contained -p:PublishSingleFile=true
 ```
+
+(The desktop pins `win-x64` in its csproj; the MCP server doesn't, so its single-file publish needs an
+explicit `-r win-x64`.)
 
 Smoke-test the published desktop exe on a clean machine to confirm the driver extracts.
 
