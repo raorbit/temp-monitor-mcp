@@ -74,7 +74,12 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            // The server never bound: delete any discovery file so the MCP server doesn't trust a dead
+            // endpoint (it gets a fast connection-refused on the default port instead of a bogus URL),
+            // and surface the failure in the tray tooltip — not just the buried Endpoint label.
+            EndpointFile.TryDelete();
             _vm.Endpoint = "http server failed — " + ex.Message;
+            _vm.ServerFailed = true;
         }
 
         StartPollLoop();

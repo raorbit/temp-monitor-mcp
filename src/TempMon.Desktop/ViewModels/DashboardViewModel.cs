@@ -75,6 +75,22 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         private set { _trayTooltip = value; Raise(nameof(TrayTooltip)); }
     }
 
+    private double? _lastCpu;
+    private bool _serverFailed;
+
+    /// <summary>Set when the HTTP server failed to start. It persists across polls (the server does not
+    /// retry), so the tray tooltip keeps surfacing the broken state instead of reverting to a CPU reading.</summary>
+    public bool ServerFailed
+    {
+        get => _serverFailed;
+        set { _serverFailed = value; UpdateTrayTooltip(); }
+    }
+
+    private void UpdateTrayTooltip() =>
+        TrayTooltip = _serverFailed
+            ? "TempMon — HTTP server failed"
+            : _lastCpu is null ? "TempMon — CPU —" : $"TempMon — CPU {Fmt(_lastCpu)}°C";
+
     private bool _autoStartEnabled;
     public bool AutoStartEnabled
     {
@@ -101,7 +117,8 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         double? cpu = snap.Summary.CpuC;
         CpuTrayText = Fmt(cpu);
         CpuTrayBrush = Palette.ForLevel(Thresholds.Level(Component.Cpu, cpu));
-        TrayTooltip = cpu is null ? "TempMon — CPU —" : $"TempMon — CPU {Fmt(cpu)}°C";
+        _lastCpu = cpu;
+        UpdateTrayTooltip();
 
         _lastSnapshotUtc = DateTimeOffset.TryParse(snap.Timestamp, CultureInfo.InvariantCulture,
             DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var when)
