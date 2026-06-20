@@ -56,6 +56,8 @@ public sealed class TempMonTools
         if (!ok) return error!;
 
         using var doc = JsonDocument.Parse(json!);
+        if (SensorsUnavailable(doc.RootElement)) return Unavailable();
+
         return doc.RootElement.TryGetProperty("summary", out var summary)
             ? summary.GetRawText()
             : Problem("snapshot had no 'summary' field");
@@ -80,6 +82,8 @@ public sealed class TempMonTools
 
         var over = new List<object>();
         using var doc = JsonDocument.Parse(json!);
+        if (SensorsUnavailable(doc.RootElement)) return Unavailable();
+
         if (doc.RootElement.TryGetProperty("sensors", out var sensors) &&
             sensors.ValueKind == JsonValueKind.Array)
         {
@@ -225,6 +229,24 @@ public sealed class TempMonTools
             });
         }
     }
+
+    /// <summary>True only when the snapshot explicitly reports the sensor reader is closed
+    /// (<c>sensors_available: false</c>). A MISSING key means "available" — older desktops, and the
+    /// hand-built test fixtures, omit it, and we must never turn their data into a false unavailable.</summary>
+    private static bool SensorsUnavailable(JsonElement root) =>
+        root.TryGetProperty("sensors_available", out var a) && a.ValueKind == JsonValueKind.False;
+
+    /// <summary>The explicit "sensors could not be read" verdict for the summarising tools, kept
+    /// deliberately distinct from <see cref="Problem"/> (a transport failure): the desktop is reachable,
+    /// it simply has no readable data — so a zero/all-null answer would be a dangerous false "all clear".</summary>
+    private static string Unavailable() => JsonSerializer.Serialize(new
+    {
+        available = false,
+        reason = "sensors_not_readable",
+        message = "TempMon.Desktop is running but the hardware sensors could not be read (the driver " +
+                  "failed to load, or the app is not elevated). These readings are unavailable — this " +
+                  "is NOT a safe 'all clear'. Run TempMon.Desktop elevated and check the elevation banner.",
+    });
 
     private static string Problem(string message) =>
         JsonSerializer.Serialize(new { error = message });

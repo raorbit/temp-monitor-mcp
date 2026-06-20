@@ -90,9 +90,27 @@ public sealed class CheckThresholdsTests
     }
 
     [Fact]
+    public async Task Unavailable_snapshot_returns_explicit_verdict_not_count_zero()
+    {
+        // The headline P1: a desktop whose reader never opened (sensors_available:false) must NOT come
+        // back as count:0 ("nothing over limit") — it must say the sensors are unavailable.
+        var handler = StubHttpMessageHandler.RespondingWith(Fixtures.UnavailableSnapshot());
+        var tools = ToolsBuilder.Default(handler);
+
+        var json = await tools.CheckThresholds(null, null, null, CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("available").GetBoolean());
+        Assert.Equal("sensors_not_readable", root.GetProperty("reason").GetString());
+        Assert.False(root.TryGetProperty("count", out _));
+    }
+
+    [Fact]
     public async Task Null_sensor_values_are_skipped()
     {
-        // Unelevated snapshot: every value is null, so nothing can be over any limit.
+        // No sensors_available key (missing ⇒ available): null-valued sensors are simply skipped and
+        // the count is 0 — distinct from the explicit unavailable verdict above.
         const string body = """
             { "timestamp": "2026-06-19T00:00:00Z", "host": "TEST-PC",
               "summary": { "cpu_c": null, "gpu_c": null, "max_drive_c": null },
