@@ -19,6 +19,7 @@ public partial class App : Application
     private TempServer? _server;
     private DashboardViewModel? _vm;
     private CancellationTokenSource? _cts;
+    private Task? _pollTask;
     private DispatcherTimer? _freshnessTimer;
     private TaskbarIcon? _trayIcon;
     private MainWindow? _window;
@@ -122,15 +123,16 @@ public partial class App : Application
         var token = _cts.Token;
 
         // Poll off the UI thread; marshal the immutable snapshot back for rendering. Runs while the
-        // window is hidden to tray — the VM update refreshes the tray header/tooltip too.
-        _ = Task.Run(async () =>
+        // window is hidden to tray — the VM update refreshes the tray header/tooltip too. InvokeAsync
+        // (not the blocking Invoke) keeps the poll thread unblocked so TearDown can cancel-then-join it.
+        _pollTask = Task.Run(async () =>
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
                     var snapshot = _poller!.Poll();
-                    Dispatcher.Invoke(() => _vm!.Update(snapshot));
+                    await Dispatcher.InvokeAsync(() => _vm!.Update(snapshot)).Task;
                     await Task.Delay(TimeSpan.FromSeconds(PollSeconds), token);
                 }
                 catch (TaskCanceledException)
@@ -246,9 +248,17 @@ public partial class App : Application
         _disposed = true;
         _shuttingDown = true;
 
+        _freshnessTimer?.Stop();
         _showEvent?.Set();   // release the listener thread's WaitOne so it can exit
+
+        // Cancel the poll loop and briefly join it BEFORE blocking on the server: its last iteration may
+        // have an InvokeAsync queued on this (UI) thread, so we must not block the dispatcher while one is
+        // in flight. Both waits are bounded so a wedged shutdown can never hang the exit.
         _cts?.Cancel();
-        _server?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        try { _pollTask?.Wait(TimeSpan.FromSeconds(2)); } catch { /* cancellation / aggregate — fine */ }
+
+        try { _server?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(3)); } catch { /* bounded dispose */ }
+
         _poller?.Dispose();
         EndpointFile.TryDelete();
         _trayIcon?.Dispose();   // issues the Shell_NotifyIcon delete — no ghost icon
