@@ -116,14 +116,15 @@ or add it to `.mcp.json` (see [`.mcp.json.example`](./.mcp.json.example)):
 
 | Tool | Returns |
 |---|---|
-| `get_temperatures()` | the full snapshot payload (JSON) |
+| `get_temperatures()` | the snapshot wrapped in a `{ schema_version, stale, age_seconds, data }` envelope (read the snapshot from `data`) |
 | `get_summary()` | `cpu_c` / `gpu_c` / `max_drive_c` |
 | `check_thresholds(cpuMax?, gpuMax?, driveMax?)` | sensors at/above the given limits (defaults: CPU 80, GPU 75, drive 60 °C) |
 
-**Staleness:** the desktop app polls every few seconds. If its poll loop has stalled (or it died
-after writing the discovery file), `get_temperatures()` wraps the payload as
-`{ "stale": true, "age_seconds": N, "hint": "...", "data": { …snapshot… } }` once the snapshot is
-older than 30 s — a fresh snapshot is returned verbatim. If the desktop process named in
+**Staleness:** the desktop app polls every few seconds. `get_temperatures()` **always** wraps the
+snapshot as `{ "schema_version": N, "stale": <bool>, "age_seconds": N, "data": { …snapshot… } }` —
+read the snapshot from `data`. `stale` flips to `true` (with a `hint`) once the snapshot is older than
+30 s, meaning the poll loop has stalled or the desktop died after writing the discovery file; a missing
+or unparseable timestamp yields `stale: false, age_seconds: null`. If the desktop process named in
 `endpoint.json` is gone, the tools fail fast with a friendly message instead of waiting out the HTTP
 timeout.
 

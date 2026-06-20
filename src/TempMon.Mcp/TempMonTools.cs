@@ -43,9 +43,9 @@ public sealed class TempMonTools
         var (ok, json, error) = await TryFetchAsync(cancellationToken);
         if (!ok) return error!;
 
-        // Fresh snapshots return the wire contract verbatim; only a stale one gets wrapped, so a
-        // caller that doesn't care about staleness still sees the exact payload it expects.
-        return MarkStaleIfNeeded(json!);
+        // The snapshot is always wrapped in a { schema_version, stale, age_seconds, data } envelope so
+        // a consumer reads from one stable path (.data) whether or not the snapshot turned out stale.
+        return Envelope(json!);
     }
 
     [McpServerTool(Name = "get_summary")]
@@ -165,40 +165,65 @@ public sealed class TempMonTools
         }
     }
 
-    /// <summary>Wraps the snapshot in a staleness envelope when its <c>timestamp</c> is older than
-    /// <see cref="StaleAfterSeconds"/>; otherwise returns the payload untouched. A snapshot whose
-    /// timestamp is missing or unparseable is passed through — we don't manufacture staleness.</summary>
-    private static string MarkStaleIfNeeded(string json)
+    /// <summary>Always wraps a parseable snapshot in a { schema_version, stale, age_seconds, data }
+    /// envelope, so a consumer reads the snapshot from one stable path (<c>.data</c>) regardless of
+    /// freshness. <c>stale</c> is <c>true</c> (with a <c>hint</c>) once the snapshot's <c>timestamp</c>
+    /// is older than <see cref="StaleAfterSeconds"/>; a missing or unparseable timestamp yields
+    /// <c>stale=false, age_seconds=null</c>. <c>schema_version</c> is read from the snapshot (absent
+    /// ⇒ 0). A genuinely non-JSON body is passed through untouched — we never wrap non-JSON.</summary>
+    private static string Envelope(string json)
     {
+        JsonDocument doc;
         try
         {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty("timestamp", out var ts) &&
+            doc = JsonDocument.Parse(json);
+        }
+        catch
+        {
+            return json;   // not JSON at all — never manufacture an envelope around it
+        }
+
+        using (doc)
+        {
+            var root = doc.RootElement;
+
+            int schemaVersion =
+                root.TryGetProperty("schema_version", out var sv) &&
+                sv.ValueKind == JsonValueKind.Number && sv.TryGetInt32(out var v)
+                    ? v : 0;
+
+            double? age = null;
+            if (root.TryGetProperty("timestamp", out var ts) &&
                 ts.GetString() is { } stamp &&
                 DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture,
                     DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var when))
             {
-                double age = (DateTimeOffset.UtcNow - when).TotalSeconds;
-                if (age > StaleAfterSeconds)
-                {
-                    var envelope = new
-                    {
-                        stale = true,
-                        age_seconds = Math.Round(age, 1),
-                        hint = "TempMon.Desktop's poll loop appears stalled — this snapshot is older " +
-                               $"than {StaleAfterSeconds}s. Check that TempMon.Desktop is running.",
-                        data = doc.RootElement.Clone(),
-                    };
-                    return JsonSerializer.Serialize(envelope);
-                }
+                age = Math.Round((DateTimeOffset.UtcNow - when).TotalSeconds, 1);
             }
-        }
-        catch
-        {
-            // Unparseable payload — return it as-is rather than inventing a staleness verdict.
-        }
 
-        return json;
+            // Two concrete shapes (rather than one with a conditional key) because this serialize uses
+            // the default options, not Snapshot.JsonOptions — a null 'hint' would otherwise be emitted.
+            if (age is { } a && a > StaleAfterSeconds)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    schema_version = schemaVersion,
+                    stale = true,
+                    age_seconds = age,
+                    hint = "TempMon.Desktop's poll loop appears stalled — this snapshot is older " +
+                           $"than {StaleAfterSeconds}s. Check that TempMon.Desktop is running.",
+                    data = root.Clone(),
+                });
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                schema_version = schemaVersion,
+                stale = false,
+                age_seconds = age,   // a number when the timestamp parsed, null otherwise
+                data = root.Clone(),
+            });
+        }
     }
 
     private static string Problem(string message) =>

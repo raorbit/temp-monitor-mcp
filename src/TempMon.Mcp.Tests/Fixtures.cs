@@ -29,6 +29,36 @@ internal static class Fixtures
         }
         """;
 
+    /// <summary>A snapshot carrying <c>schema_version: 1</c> and <c>sensors_available: true</c>, so a
+    /// test can assert the get_temperatures envelope echoes the version. The plain <see cref="Snapshot"/>
+    /// builder omits both keys, which backs the "absent ⇒ 0" / missing-key-is-available cases.</summary>
+    public static string VersionedSnapshot(string timestamp) => $$"""
+        {
+          "schema_version": 1,
+          "sensors_available": true,
+          "timestamp": "{{timestamp}}",
+          "host": "TEST-PC",
+          "summary": { "cpu_c": 82.5, "gpu_c": 60.0, "max_drive_c": 41.0 },
+          "sensors": [
+            { "component": "CPU", "device": "Core i9", "name": "CPU Package", "value": 82.5, "min": 30.0, "max": 90.0 }
+          ]
+        }
+        """;
+
+    /// <summary>A snapshot from a desktop whose sensor reader never opened: <c>sensors_available: false</c>,
+    /// an all-null summary and no sensors. The summarising tools must turn this into an explicit
+    /// unavailable verdict, never a false "nothing over limit".</summary>
+    public static string UnavailableSnapshot() => $$"""
+        {
+          "schema_version": 1,
+          "sensors_available": false,
+          "timestamp": "{{TimestampSecondsAgo(0)}}",
+          "host": "TEST-PC",
+          "summary": { "cpu_c": null, "gpu_c": null, "max_drive_c": null },
+          "sensors": []
+        }
+        """;
+
     /// <summary>An ISO-8601 (round-trip) UTC timestamp <paramref name="secondsAgo"/> in the past.</summary>
     public static string TimestampSecondsAgo(double secondsAgo) =>
         DateTimeOffset.UtcNow.AddSeconds(-secondsAgo).ToString("o", CultureInfo.InvariantCulture);

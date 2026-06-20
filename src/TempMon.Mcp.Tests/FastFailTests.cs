@@ -45,7 +45,7 @@ public sealed class FastFailTests
         Assert.EndsWith("/temps", handler.LastRequestUri!.AbsolutePath);
 
         using var doc = JsonDocument.Parse(result);
-        Assert.True(doc.RootElement.TryGetProperty("sensors", out _));
+        Assert.True(doc.RootElement.GetProperty("data").TryGetProperty("sensors", out _));
         Assert.False(doc.RootElement.TryGetProperty("error", out _));
     }
 
@@ -60,7 +60,7 @@ public sealed class FastFailTests
 
         Assert.Equal(1, handler.RequestCount);
         using var doc = JsonDocument.Parse(result);
-        Assert.True(doc.RootElement.TryGetProperty("sensors", out _));
+        Assert.True(doc.RootElement.GetProperty("data").TryGetProperty("sensors", out _));
     }
 
     [Fact]
