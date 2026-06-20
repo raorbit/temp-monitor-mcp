@@ -59,6 +59,25 @@ internal static class Fixtures
         }
         """;
 
+    /// <summary>The partial-availability case (issue #1): the reader opened (<c>sensors_available:true</c>)
+    /// but the privilege-gated CPU could not be read un-elevated — its sensor is <c>readable:false</c> with
+    /// a real-looking <c>0</c>, <c>cpu_c</c> is null and <c>cpu_readable:false</c> on the summary. The GPU
+    /// (NVML) and a cool Storage drive (SMART) read fine and stay <c>readable:true</c>.</summary>
+    public static string PartialSnapshot() => $$"""
+        {
+          "schema_version": 1,
+          "sensors_available": true,
+          "timestamp": "{{TimestampSecondsAgo(0)}}",
+          "host": "TEST-PC",
+          "summary": { "cpu_c": null, "gpu_c": 50.0, "max_drive_c": 38.0, "cpu_readable": false },
+          "sensors": [
+            { "component": "CPU", "device": "Ryzen 9", "name": "Core (Tctl/Tdie)", "value": 0.0, "min": 0.0, "max": 0.0, "readable": false },
+            { "component": "GPU", "device": "RTX 4090", "name": "GPU Core", "value": 50.0, "min": 28.0, "max": 71.0, "readable": true },
+            { "component": "Storage", "device": "Samsung 990", "name": "Drive", "value": 38.0, "min": 30.0, "max": 55.0, "readable": true }
+          ]
+        }
+        """;
+
     /// <summary>An ISO-8601 (round-trip) UTC timestamp <paramref name="secondsAgo"/> in the past.</summary>
     public static string TimestampSecondsAgo(double secondsAgo) =>
         DateTimeOffset.UtcNow.AddSeconds(-secondsAgo).ToString("o", CultureInfo.InvariantCulture);

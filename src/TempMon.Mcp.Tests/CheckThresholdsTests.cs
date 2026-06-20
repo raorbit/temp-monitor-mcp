@@ -125,4 +125,67 @@ public sealed class CheckThresholdsTests
         using var doc = JsonDocument.Parse(json);
         Assert.Equal(0, doc.RootElement.GetProperty("count").GetInt32());
     }
+
+    [Fact]
+    public async Task Partial_snapshot_flags_unreadable_cpu_and_never_reads_as_all_clear()
+    {
+        // Issue #1: un-elevated, the CPU sensor is readable:false with a real-looking 0. It must NOT clear
+        // the limit silently — the result carries partial:true + unreadable:["CPU"], and the 0 is no hit.
+        var handler = StubHttpMessageHandler.RespondingWith(Fixtures.PartialSnapshot());
+        var tools = ToolsBuilder.Default(handler);
+
+        var json = await tools.CheckThresholds(null, null, null, CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("partial").GetBoolean());
+        var unreadable = root.GetProperty("unreadable").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains("CPU", unreadable);
+        // The GPU (NVML) and cool Storage (SMART) read fine and are never marked unreadable.
+        Assert.DoesNotContain("GPU", unreadable);
+        Assert.DoesNotContain("Storage", unreadable);
+
+        // The zeroed CPU is excluded from over_limit (never treated as 0 < 80 = "fine").
+        var over = root.GetProperty("over_limit").EnumerateArray()
+            .Select(e => e.GetProperty("component").GetString()).ToList();
+        Assert.DoesNotContain("CPU", over);
+        Assert.Empty(over);
+        // count:0 here, but partial:true is present — so it can't read as a clean "all clear".
+        Assert.Equal(0, root.GetProperty("count").GetInt32());
+    }
+
+    [Fact]
+    public async Task All_readable_fixture_carries_no_partial_or_unreadable_keys()
+    {
+        // Back-compat: the standard fixture omits 'readable' (missing ⇒ readable), so the result is the
+        // plain shape with no partial/unreadable keys — behaviour identical to before the fix.
+        using var doc = await RunWithFixture();
+        var root = doc.RootElement;
+
+        Assert.False(root.TryGetProperty("partial", out _));
+        Assert.False(root.TryGetProperty("unreadable", out _));
+    }
+
+    [Fact]
+    public async Task Readable_null_cpu_stays_count_zero_with_no_partial()
+    {
+        // The distinction: a sensor that is readable:true but simply has no value (null) is skipped →
+        // count 0 with NO partial. Only readable:false (privilege-gated, unknown) escalates to partial.
+        const string body = """
+            { "timestamp": "2026-06-19T00:00:00Z", "host": "TEST-PC", "sensors_available": true,
+              "summary": { "cpu_c": null, "gpu_c": null, "max_drive_c": null },
+              "sensors": [
+                { "component": "CPU", "device": "d", "name": "n", "value": null, "min": null, "max": null, "readable": true }
+              ] }
+            """;
+        var handler = StubHttpMessageHandler.RespondingWith(body);
+        var tools = ToolsBuilder.Default(handler);
+
+        var json = await tools.CheckThresholds(null, null, null, CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal(0, root.GetProperty("count").GetInt32());
+        Assert.False(root.TryGetProperty("partial", out _));
+    }
 }

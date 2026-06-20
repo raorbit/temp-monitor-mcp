@@ -124,4 +124,18 @@ public class SnapshotContractTests
         Assert.Equal("Motherboard", Component.Motherboard);
         Assert.Equal("Storage", Component.Storage);
     }
+
+    [Fact]
+    public void Readable_flags_are_additive_default_true_and_keep_schema_one()
+    {
+        // The partial-availability fields (readable / cpu_readable) are additive with default true, so the
+        // all-readable (elevated) path stays byte-compatible: Sample() omits them yet they serialize true,
+        // and the schema version must NOT bump for a purely additive change.
+        using var doc = JsonDocument.Parse(Sample().ToJson());
+        var root = doc.RootElement;
+
+        Assert.True(root.GetProperty("summary").GetProperty("cpu_readable").GetBoolean());
+        Assert.True(root.GetProperty("sensors")[0].GetProperty("readable").GetBoolean());
+        Assert.Equal(1, Snapshot.CurrentSchemaVersion);
+    }
 }
