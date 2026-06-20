@@ -22,11 +22,15 @@ public sealed class SensorPoller : IDisposable
     private readonly Computer _computer;
     private readonly UpdateVisitor _visitor = new();
     private volatile Snapshot _latest;
+    private readonly bool _elevated;
     private bool _opened;
     private bool _disposed;
 
-    public SensorPoller()
+    // The desktop already knows whether it's elevated (ElevationHelper) and hands it in, so Core stays
+    // free of a System.Security.Principal dependency and behaves deterministically on un-elevated CI.
+    public SensorPoller(bool elevated)
     {
+        _elevated = elevated;
         _computer = new Computer
         {
             IsCpuEnabled = true,
@@ -75,35 +79,48 @@ public sealed class SensorPoller : IDisposable
         foreach (IHardware hw in _computer.Hardware)
             Collect(hw, sensors, component: null, device: null);
 
+        // CPU is privilege-gated: un-elevated, its WinRing0-backed sensors read a real-looking 0 rather
+        // than null, so report cpu_c as null (not a misleading 0) and flag the headline as unreadable.
         var summary = new Summary(
-            CpuC: RepresentativeCpu(sensors),
+            CpuC: _elevated ? RepresentativeCpu(sensors) : null,
             GpuC: RepresentativeGpu(sensors),
-            MaxDriveC: MaxDrive(sensors));
+            MaxDriveC: MaxDrive(sensors),
+            CpuReadable: _elevated);
 
         return new Snapshot(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, summary, sensors);
     }
 
     /// <summary>Recursively gathers temperature sensors, carrying the top-level component/device
-    /// label down to sub-hardware (e.g. a motherboard's SuperIO chip).</summary>
-    private static void Collect(IHardware hw, List<SensorReading> output, string? component, string? device)
+    /// label down to sub-hardware (e.g. a motherboard's SuperIO chip). Instance (not static) so it can
+    /// stamp each reading's <c>readable</c> flag from <see cref="_elevated"/>.</summary>
+    private void Collect(IHardware hw, List<SensorReading> output, string? component, string? device)
     {
         component ??= MapComponent(hw.HardwareType);
         device ??= hw.Name;
 
         if (component is not null)
         {
+            // A privilege-gated subsystem (CPU/Motherboard) read while un-elevated is untrustworthy —
+            // mark it so the MCP layer reports "unreadable" instead of trusting a real-looking 0.
+            bool readable = _elevated || !IsPrivilegeGated(component);
             foreach (ISensor sensor in hw.Sensors)
             {
                 if (sensor.SensorType != SensorType.Temperature) continue;
                 output.Add(new SensorReading(
                     component, device, sensor.Name,
-                    Round(sensor.Value), Round(sensor.Min), Round(sensor.Max)));
+                    Round(sensor.Value), Round(sensor.Min), Round(sensor.Max), readable));
             }
         }
 
         foreach (IHardware sub in hw.SubHardware)
             Collect(sub, output, component, device);
     }
+
+    /// <summary>CPU and Motherboard temps arrive over the WinRing0/SuperIO path, which only loads when
+    /// elevated; GPU (NVML) and Storage (SMART) read fine un-elevated. So only these two can go dark —
+    /// and silently return a plausible 0 — without administrator rights.</summary>
+    internal static bool IsPrivilegeGated(string component) =>
+        component is Component.Cpu or Component.Motherboard;
 
     private static string? MapComponent(HardwareType type) => type switch
     {
@@ -152,7 +169,7 @@ public sealed class SensorPoller : IDisposable
     // before _computer.Open() while _opened is still false, and Poll() early-returns on !_opened, so
     // only a healthy Build() ever publishes a snapshot with SensorsAvailable == true.
     private Snapshot Empty() =>
-        new(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, new Summary(null, null, null), Array.Empty<SensorReading>());
+        new(Snapshot.CurrentSchemaVersion, _opened, Now(), Environment.MachineName, new Summary(null, null, null, _elevated), Array.Empty<SensorReading>());
 
     public void Dispose()
     {
