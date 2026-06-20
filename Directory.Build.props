@@ -9,6 +9,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- The design leans on the nullable contract (Snapshot null-emission, MaxDrive null semantics),
+         so a nullability regression must fail the build even though other warnings stay non-fatal. -->
+    <WarningsAsErrors>nullable</WarningsAsErrors>
 
     <!-- Target .NET 8 (LTS, per the design) but roll forward so the apps run on a machine that
          only has a newer shared framework (e.g. ASP.NET Core 9/10) installed. -->
