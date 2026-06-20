@@ -175,29 +175,26 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
         };
 
         string device;
-        List<SensorVM> sensors;
+        List<ICardItem> items;
 
         if (component == Component.Storage)
         {
-            // Each drive is its own LHM device; label sensors by drive, summarise the card by count.
+            // One card per physical drive; a multi-sensor drive (an NVMe composite + Temperature 1/2)
+            // lists all its readings inside that one card instead of rendering as several look-alikes.
             int drives = group.Select(s => s.Device).Distinct().Count();
             device = drives == 1 ? "1 drive" : $"{drives} drives";
-            // Collapse the label to just the drive only when that drive reports a single, generically
-            // named sensor. A drive that exposes several (an NVMe composite + Temperature 1/2) keeps the
-            // sensor name, so its readings don't render as indistinguishable duplicate drives.
-            var perDevice = group.GroupBy(s => s.Device).ToDictionary(g => g.Key, g => g.Count());
-            sensors = group
-                .Select(s => MakeSensor(component,
-                    perDevice[s.Device] == 1 && IsGeneric(s.Name) ? s.Device : $"{s.Device} · {s.Name}", s))
+            items = group
+                .GroupBy(s => s.Device)
+                .Select(g => (ICardItem)MakeDrive(component, g.Key, g.ToList()))
                 .ToList();
         }
         else
         {
             device = group[0].Device;
-            sensors = group.Select(s => MakeSensor(component, s.Name, s)).ToList();
+            items = group.Select(s => (ICardItem)MakeSensor(component, s.Name, s)).ToList();
         }
 
-        return new ComponentCardVM(tag, component, device, $"{sensors.Count} sensors", sensors);
+        return new ComponentCardVM(tag, component, device, $"{group.Count} sensors", items);
     }
 
     private static SensorVM MakeSensor(string component, string label, SensorReading s)
@@ -214,8 +211,17 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
             "max " + Fmt(s.Max));
     }
 
-    private static bool IsGeneric(string name) =>
-        name.StartsWith("Temperature", StringComparison.OrdinalIgnoreCase);
+    /// <summary>One card for a whole drive: the hottest of its sensors as the headline, with every
+    /// reading listed below when there are several (a single-sensor drive shows just the headline).</summary>
+    private static DriveCardVM MakeDrive(string component, string device, IReadOnlyList<SensorReading> readings)
+    {
+        double? max = readings.Max(r => r.Value);
+        IReadOnlyList<DriveReadingVM> rows = readings.Count <= 1
+            ? Array.Empty<DriveReadingVM>()
+            : readings.Select(r => new DriveReadingVM(
+                  r.Name, Fmt(r.Value), Palette.ForLevel(Thresholds.Level(component, r.Value)))).ToList();
+        return new DriveCardVM(device, Fmt(max), Palette.ForLevel(Thresholds.Level(component, max)), rows);
+    }
 
     private static string Fmt(double? v) =>
         v is null ? "—" : v.Value.ToString("0.0", CultureInfo.InvariantCulture);
@@ -226,12 +232,22 @@ public sealed class DashboardViewModel : INotifyPropertyChanged
 
 public sealed record SummaryTileVM(string Label, string Value, Brush Color);
 
+/// <summary>Marker for the two kinds of item a component card can hold: a single sensor
+/// (CPU/GPU/Motherboard) or a whole drive with several readings (Storage). The dashboard selects the
+/// matching DataTemplate by runtime type.</summary>
+public interface ICardItem { }
+
 public sealed record SensorVM(
     string Name, string Value, Brush Color,
-    GridLength BarStar, GridLength RestStar, string Min, string Max);
+    GridLength BarStar, GridLength RestStar, string Min, string Max) : ICardItem;
+
+public sealed record DriveReadingVM(string Name, string Value, Brush Color);
+
+public sealed record DriveCardVM(
+    string Device, string Headline, Brush HeadlineColor, IReadOnlyList<DriveReadingVM> Readings) : ICardItem;
 
 public sealed record ComponentCardVM(
-    string Tag, string Name, string Device, string CountText, IReadOnlyList<SensorVM> Sensors);
+    string Tag, string Name, string Device, string CountText, IReadOnlyList<ICardItem> Items);
 
 internal static class Palette
 {
