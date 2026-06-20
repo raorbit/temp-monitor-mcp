@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using Hardcodet.Wpf.TaskbarNotification;
 using TempMon.Core;
 using TempMon.Desktop.Autostart;
@@ -18,6 +19,7 @@ public partial class App : Application
     private TempServer? _server;
     private DashboardViewModel? _vm;
     private CancellationTokenSource? _cts;
+    private DispatcherTimer? _freshnessTimer;
     private TaskbarIcon? _trayIcon;
     private MainWindow? _window;
     private Mutex? _singleInstance;
@@ -76,7 +78,18 @@ public partial class App : Application
         }
 
         StartPollLoop();
+        StartFreshnessTimer();
         RefreshAutoStartState();   // off the UI thread — schtasks shells a process
+    }
+
+    /// <summary>Ticks once a second to age the dashboard's "updated Ns ago" label off the snapshot
+    /// timestamp, so a stalled poll loop shows as a growing (then amber) staleness instead of a frozen
+    /// "just now" — the UI surface that should make a stuck reader obvious.</summary>
+    private void StartFreshnessTimer()
+    {
+        _freshnessTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _freshnessTimer.Tick += (_, _) => _vm?.RefreshFreshness();
+        _freshnessTimer.Start();
     }
 
     private void StartPollLoop()
