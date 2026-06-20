@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 [assembly: InternalsVisibleTo("TempMon.Mcp.Tests")]
+[assembly: InternalsVisibleTo("TempMon.Desktop.Tests")]   // the endpoint.json round-trip test reads ResolveEndpoint
 
 namespace TempMon.Mcp;
 

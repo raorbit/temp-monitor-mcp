@@ -1,5 +1,9 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+
+// Grants the Desktop test project access to the internal EndpointFile and TempServer host types.
+[assembly: InternalsVisibleTo("TempMon.Desktop.Tests")]
 
 namespace TempMon.Desktop.Hosting;
 
